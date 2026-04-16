@@ -1,0 +1,16 @@
+# Build outputs
+**/bin/
+**/obj/
+**/obj_verify/
+
+# User and IDE files
+.vs/
+.vscode/
+**/*.user
+**/*.suo
+
+# Local uploads and runtime data
+FHIRScanner/Storage/Uploads/
+
+# Logs
+*.log

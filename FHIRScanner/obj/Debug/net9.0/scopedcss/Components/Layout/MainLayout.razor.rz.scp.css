@@ -1,0 +1,79 @@
+.app-shell[b-7j19w8ed5v] {
+    position: relative;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+.ambient[b-7j19w8ed5v] {
+    position: fixed;
+    inset: auto;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.32;
+    pointer-events: none;
+}
+
+.ambient-one[b-7j19w8ed5v] {
+    top: -6rem;
+    left: -4rem;
+    width: 18rem;
+    height: 18rem;
+    background: #0ea5e9;
+}
+
+.ambient-two[b-7j19w8ed5v] {
+    right: -4rem;
+    top: 8rem;
+    width: 22rem;
+    height: 22rem;
+    background: #2dd4bf;
+}
+
+.app-header[b-7j19w8ed5v] {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    padding: 1.25rem 1.25rem 0;
+}
+
+.app-main[b-7j19w8ed5v] {
+    position: relative;
+    z-index: 1;
+    padding: 1rem 1.25rem 2rem;
+}
+
+.content[b-7j19w8ed5v] {
+    width: min(1280px, 100%);
+    margin: 0 auto;
+}
+
+#blazor-error-ui[b-7j19w8ed5v] {
+    color-scheme: light only;
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+#blazor-error-ui .dismiss[b-7j19w8ed5v] {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+@media (max-width: 720px) {
+    .app-header[b-7j19w8ed5v] {
+        padding: 0.9rem 0.9rem 0;
+    }
+
+    .app-main[b-7j19w8ed5v] {
+        padding: 0.85rem 0.9rem 1.5rem;
+    }
+}

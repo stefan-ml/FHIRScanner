@@ -1,0 +1,54 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "C:\\Stefan\\master\\Stefan\\IS\\stefan\\FHIRScanner\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A46C7C24-DB81-4543-8449-1EC7AEBA8310}|FHIRScanner\\FHIRScanner.csproj|c:\\stefan\\master\\stefan\\is\\stefan\\fhirscanner\\fhirscanner\\components\\layout\\navmenu.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}",
+      "RelativeMoniker": "D:0:0:{A46C7C24-DB81-4543-8449-1EC7AEBA8310}|FHIRScanner\\FHIRScanner.csproj|solutionrelative:fhirscanner\\components\\layout\\navmenu.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A46C7C24-DB81-4543-8449-1EC7AEBA8310}|FHIRScanner\\FHIRScanner.csproj|c:\\stefan\\master\\stefan\\is\\stefan\\fhirscanner\\fhirscanner\\components\\layout\\mainlayout.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}",
+      "RelativeMoniker": "D:0:0:{A46C7C24-DB81-4543-8449-1EC7AEBA8310}|FHIRScanner\\FHIRScanner.csproj|solutionrelative:fhirscanner\\components\\layout\\mainlayout.razor||{40D31677-CBC0-4297-A9EF-89D907823A98}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "NavMenu.razor",
+              "DocumentMoniker": "C:\\Stefan\\master\\Stefan\\IS\\stefan\\FHIRScanner\\FHIRScanner\\Components\\Layout\\NavMenu.razor",
+              "RelativeDocumentMoniker": "FHIRScanner\\Components\\Layout\\NavMenu.razor",
+              "ToolTip": "C:\\Stefan\\master\\Stefan\\IS\\stefan\\FHIRScanner\\FHIRScanner\\Components\\Layout\\NavMenu.razor",
+              "RelativeToolTip": "FHIRScanner\\Components\\Layout\\NavMenu.razor",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAA4AAAAOAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
+              "WhenOpened": "2026-04-16T17:51:12.31Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "MainLayout.razor",
+              "DocumentMoniker": "C:\\Stefan\\master\\Stefan\\IS\\stefan\\FHIRScanner\\FHIRScanner\\Components\\Layout\\MainLayout.razor",
+              "RelativeDocumentMoniker": "FHIRScanner\\Components\\Layout\\MainLayout.razor",
+              "ToolTip": "C:\\Stefan\\master\\Stefan\\IS\\stefan\\FHIRScanner\\FHIRScanner\\Components\\Layout\\MainLayout.razor",
+              "RelativeToolTip": "FHIRScanner\\Components\\Layout\\MainLayout.razor",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABcAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000759|",
+              "WhenOpened": "2026-04-16T17:50:50.627Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

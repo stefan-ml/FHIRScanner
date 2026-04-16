@@ -1,0 +1,444 @@
+@page "/"
+@rendermode InteractiveServer
+@inject IWebHostEnvironment Environment
+@inject ILogger<Home> Logger
+
+<PageTitle>FHIR Scanner</PageTitle>
+
+<section class="hero-shell">
+    <div class="hero-copy">
+        <div class="eyebrow">
+            <span class="eyebrow-dot"></span>
+            Intake workspace
+        </div>
+
+        <h1>Upload PDFs and medical images for structured FHIR extraction.</h1>
+
+        <p class="hero-lead">
+            Start the pipeline with referral letters, discharge summaries, lab scans, and supporting images.
+            This page is designed as the intake step before OCR, validation, and FHIR resource generation.
+        </p>
+
+        <div class="hero-actions">
+            <label class="primary-cta" for="document-upload">Choose documents</label>
+            <a class="secondary-cta" href="#pipeline">View pipeline</a>
+        </div>
+
+        <div class="hero-stats">
+            <div class="stat-card">
+                <span class="stat-label">Accepted</span>
+                <strong>PDF, PNG, JPG</strong>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Ready for</span>
+                <strong>OCR + FHIR mapping</strong>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label">Selection</span>
+                <strong>@UploadedFiles.Count file@(UploadedFiles.Count == 1 ? string.Empty : "s")</strong>
+            </div>
+        </div>
+    </div>
+
+    <div class="upload-panel">
+        <div class="upload-panel-header">
+            <span class="panel-kicker">Document intake</span>
+            <h2>Secure upload zone</h2>
+            <p>Select one or more source files to prepare them for downstream processing.</p>
+        </div>
+
+        <label class="upload-dropzone" for="document-upload">
+            <InputFile id="document-upload"
+                       class="upload-input"
+                       OnChange="HandleFilesSelected"
+                       multiple
+                       accept=".pdf,image/png,image/jpeg,image/jpg,image/tiff,image/bmp,image/webp" />
+
+            <div class="upload-icon" aria-hidden="true">
+                <span></span>
+                <span></span>
+            </div>
+
+            <strong>Drop files here or click to browse</strong>
+            <span>Best for scanned PDFs, referral letters, radiology snapshots, and lab images.</span>
+        </label>
+
+        @if (!string.IsNullOrWhiteSpace(UploadMessage))
+        {
+            <div class="upload-feedback upload-feedback-success">@UploadMessage</div>
+        }
+
+        @if (!string.IsNullOrWhiteSpace(UploadError))
+        {
+            <div class="upload-feedback upload-feedback-error">@UploadError</div>
+        }
+
+        <div class="upload-guidance">
+            <div>
+                <span class="guidance-label">Recommended</span>
+                <strong>High-resolution PDF bundles</strong>
+            </div>
+            <div>
+                <span class="guidance-label">Storage</span>
+                <strong>Private server folder</strong>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="workspace-grid">
+    <div class="selection-card">
+        <div class="section-heading">
+            <div>
+                <span class="section-kicker">Current selection</span>
+                <h2>Files ready for processing</h2>
+            </div>
+            <div class="section-actions">
+                <span class="section-pill">@FormatFileCount(UploadedFiles.Count)</span>
+                <button class="action-button action-button-primary"
+                        @onclick="RunProcessingAsync"
+                        disabled="@(UploadedFiles.Count == 0 || IsProcessing)">
+                    @(IsProcessing ? "Processing..." : "Run processing")
+                </button>
+            </div>
+        </div>
+
+        @if (UploadedFiles.Count == 0)
+        {
+            <div class="empty-state">
+                <strong>No files selected yet</strong>
+                <p>Once you choose documents, they'll be saved to private server storage and listed here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="file-list">
+                @foreach (var file in UploadedFiles)
+                {
+                    <div class="file-row">
+                        <div class="file-badge">@GetFileBadge(file)</div>
+                        <div class="file-meta">
+                            <strong>@file.OriginalName</strong>
+                            <span>@file.Format - @FormatFileSize(file.Size)</span>
+                            <span>Saved as @file.StoredName</span>
+                            <span>@file.RelativePath</span>
+                            <span class="status-chip @GetStatusClass(file.Status)">@file.Status</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="file-action-button file-action-danger"
+                                    @onclick="() => DeleteUploadedFileAsync(file)"
+                                    disabled="@IsProcessing">
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="selection-summary">
+                <div>
+                    <span class="guidance-label">Total size</span>
+                    <strong>@FormatFileSize(UploadedFiles.Sum(file => file.Size))</strong>
+                </div>
+                <div>
+                    <span class="guidance-label">Workflow status</span>
+                    <strong>@GetProcessingSummary()</strong>
+                </div>
+                <div>
+                    <span class="guidance-label">Server folder</span>
+                    <strong>@StorageFolderDisplay</strong>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="info-column">
+        <div class="info-card" id="pipeline">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">Processing map</span>
+                    <h2>FHIR conversion pipeline</h2>
+                </div>
+            </div>
+
+            <div class="pipeline-list">
+                <div class="pipeline-step">
+                    <span>01</span>
+                    <div>
+                        <strong>Upload and classify</strong>
+                        <p>Capture PDFs and images, then tag them as patient, encounter, lab, or report inputs.</p>
+                    </div>
+                </div>
+                <div class="pipeline-step">
+                    <span>02</span>
+                    <div>
+                        <strong>OCR and text cleanup</strong>
+                        <p>Extract readable content, preserve page structure, and normalize medical text.</p>
+                    </div>
+                </div>
+                <div class="pipeline-step">
+                    <span>03</span>
+                    <div>
+                        <strong>FHIR resource assembly</strong>
+                        <p>Map clinical facts into structured resources such as Patient, Observation, and Encounter.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-card compact-card">
+            <div class="section-heading">
+                <div>
+                    <span class="section-kicker">Accepted inputs</span>
+                    <h2>Upload checklist</h2>
+                </div>
+            </div>
+
+            <ul class="check-list">
+                <li>Multi-page PDFs for scanned documentation</li>
+                <li>PNG or JPG for phone captures</li>
+                <li>Clean, readable pages with visible patient metadata</li>
+                <li>Consistent file naming for later audit and traceability</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+@code {
+    private const int MaxAllowedFiles = 20;
+    private const long MaxFileSizeBytes = 50L * 1024 * 1024;
+
+    private readonly List<UploadedDocument> UploadedFiles = [];
+    private string? UploadMessage;
+    private string? UploadError;
+    private bool IsProcessing;
+
+    private string StorageFolderDisplay => Path.Combine("Storage", "Uploads");
+
+    private async Task HandleFilesSelected(InputFileChangeEventArgs args)
+    {
+        UploadMessage = null;
+        UploadError = null;
+
+        var selectedFiles = args.GetMultipleFiles(MaxAllowedFiles);
+        if (selectedFiles.Count == 0)
+        {
+            return;
+        }
+
+        var uploadRoot = Path.Combine(Environment.ContentRootPath, "Storage", "Uploads");
+        Directory.CreateDirectory(uploadRoot);
+
+        var savedFiles = new List<UploadedDocument>();
+
+        foreach (var file in selectedFiles)
+        {
+            try
+            {
+                var originalName = Path.GetFileName(file.Name);
+                var extension = Path.GetExtension(originalName);
+                var safeStem = CreateSafeFileStem(Path.GetFileNameWithoutExtension(originalName));
+                var storedName = $"{DateTime.UtcNow:yyyyMMddHHmmssfff}_{safeStem}_{Guid.NewGuid():N}{extension}";
+                var destinationPath = Path.Combine(uploadRoot, storedName);
+
+                await using var readStream = file.OpenReadStream(MaxFileSizeBytes);
+                await using var writeStream = new FileStream(destinationPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                await readStream.CopyToAsync(writeStream);
+
+                savedFiles.Add(new UploadedDocument(
+                    originalName,
+                    storedName,
+                    GetDisplayFormat(originalName),
+                    file.Size,
+                    Path.Combine(StorageFolderDisplay, storedName),
+                    "Saved"));
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Failed to save uploaded document {FileName}", file.Name);
+                UploadError = $"One or more files could not be saved. Maximum size per file is {FormatFileSize(MaxFileSizeBytes)}.";
+            }
+        }
+
+        if (savedFiles.Count > 0)
+        {
+            UploadedFiles.AddRange(savedFiles);
+            UploadMessage = $"{savedFiles.Count} file{(savedFiles.Count == 1 ? string.Empty : "s")} saved to {StorageFolderDisplay}.";
+        }
+    }
+
+    private async Task DeleteUploadedFileAsync(UploadedDocument file)
+    {
+        UploadMessage = null;
+        UploadError = null;
+
+        try
+        {
+            var targetPath = Path.Combine(Environment.ContentRootPath, "Storage", "Uploads", file.StoredName);
+            if (File.Exists(targetPath))
+            {
+                File.Delete(targetPath);
+            }
+
+            UploadedFiles.Remove(file);
+            UploadMessage = $"{file.OriginalName} was deleted from {StorageFolderDisplay}.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to delete uploaded document {FileName}", file.OriginalName);
+            UploadError = $"Could not delete {file.OriginalName}.";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RunProcessingAsync()
+    {
+        if (UploadedFiles.Count == 0 || IsProcessing)
+        {
+            return;
+        }
+
+        UploadMessage = null;
+        UploadError = null;
+        IsProcessing = true;
+
+        try
+        {
+            foreach (var file in UploadedFiles)
+            {
+                file.Status = "Queued";
+            }
+
+            await InvokeAsync(StateHasChanged);
+
+            foreach (var file in UploadedFiles)
+            {
+                file.Status = "Processing";
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(250);
+                file.Status = "Ready for FHIR";
+            }
+
+            UploadMessage = $"{UploadedFiles.Count} file{(UploadedFiles.Count == 1 ? string.Empty : "s")} processed and marked ready for the next FHIR step.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed while running document processing");
+            UploadError = "Processing could not be completed.";
+        }
+        finally
+        {
+            IsProcessing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string FormatFileCount(int count) => count switch
+    {
+        0 => "Waiting for upload",
+        1 => "1 file selected",
+        _ => $"{count} files selected"
+    };
+
+    private static string FormatFileSize(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB"];
+        double size = bytes;
+        var unitIndex = 0;
+
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return $"{size:0.#} {units[unitIndex]}";
+    }
+
+    private static string GetDisplayFormat(string fileName)
+    {
+        var extension = Path.GetExtension(fileName);
+        return string.IsNullOrWhiteSpace(extension) ? "Unknown format" : extension.TrimStart('.').ToUpperInvariant();
+    }
+
+    private static string GetFileBadge(UploadedDocument file)
+    {
+        var extension = Path.GetExtension(file.OriginalName).ToLowerInvariant();
+
+        return extension switch
+        {
+            ".pdf" => "PDF",
+            ".png" => "PNG",
+            ".jpg" or ".jpeg" => "JPG",
+            ".tif" or ".tiff" => "TIF",
+            ".bmp" => "BMP",
+            ".webp" => "WEBP",
+            _ => "FILE"
+        };
+    }
+
+    private static string GetStatusClass(string status) => status switch
+    {
+        "Saved" => "status-saved",
+        "Queued" => "status-queued",
+        "Processing" => "status-processing",
+        "Ready for FHIR" => "status-ready",
+        _ => string.Empty
+    };
+
+    private string GetProcessingSummary()
+    {
+        if (IsProcessing)
+        {
+            return "Processing documents";
+        }
+
+        if (UploadedFiles.Count == 0)
+        {
+            return "Waiting for upload";
+        }
+
+        return UploadedFiles.All(file => file.Status == "Ready for FHIR")
+            ? "Ready for FHIR step"
+            : "Saved to private storage";
+    }
+
+    private static string CreateSafeFileStem(string rawFileName)
+    {
+        if (string.IsNullOrWhiteSpace(rawFileName))
+        {
+            return "document";
+        }
+
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var cleaned = new string(rawFileName
+            .Select(character => invalidChars.Contains(character) ? '_' : character)
+            .ToArray());
+
+        cleaned = cleaned.Replace(' ', '_');
+        return string.IsNullOrWhiteSpace(cleaned) ? "document" : cleaned;
+    }
+
+    private sealed class UploadedDocument
+    {
+        public UploadedDocument(string originalName, string storedName, string format, long size, string relativePath, string status)
+        {
+            OriginalName = originalName;
+            StoredName = storedName;
+            Format = format;
+            Size = size;
+            RelativePath = relativePath;
+            Status = status;
+        }
+
+        public string OriginalName { get; }
+        public string StoredName { get; }
+        public string Format { get; }
+        public long Size { get; }
+        public string RelativePath { get; }
+        public string Status { get; set; }
+    }
+}
+
+
