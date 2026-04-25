@@ -139,18 +139,23 @@ public sealed class FhirDraftingService
         PromptBudget budget,
         CancellationToken cancellationToken)
     {
-        var requestBody = BuildRequestBody(report, budget);
-        using var request = new HttpRequestMessage(HttpMethod.Post, "responses")
+        var useOllama = IsOllamaProvider();
+        var requestBody = useOllama
+            ? BuildOllamaChatRequestBody(report, budget)
+            : BuildOpenAiResponsesRequestBody(report, budget);
+        var endpoint = useOllama ? "api/chat" : "responses";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
         {
             Content = new StringContent(requestBody, Encoding.UTF8, "application/json"),
         };
 
-        if (!string.IsNullOrWhiteSpace(apiKey))
+        if (!useOllama && !string.IsNullOrWhiteSpace(apiKey))
         {
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         }
 
-        if (!string.IsNullOrWhiteSpace(_openAiOptions.Organization))
+        if (!useOllama && !string.IsNullOrWhiteSpace(_openAiOptions.Organization))
         {
             request.Headers.Add("OpenAI-Organization", _openAiOptions.Organization);
         }
@@ -160,7 +165,8 @@ public sealed class FhirDraftingService
 
         if (!response.IsSuccessStatusCode)
         {
-            var formattedError = $"OpenAI request failed: {(int)response.StatusCode} {response.ReasonPhrase}. {responseBody}";
+            var providerName = useOllama ? "Ollama" : "OpenAI";
+            var formattedError = $"{providerName} request failed: {(int)response.StatusCode} {response.ReasonPhrase}. {responseBody}";
             var shouldRetry = IsContextLengthError(responseBody);
             _logger.LogWarning(
                 "FHIR draft request failed on {BudgetLabel} budget with status {StatusCode}: {Body}",
@@ -174,7 +180,7 @@ public sealed class FhirDraftingService
         var outputJson = ExtractOutputJson(responseBody);
         if (string.IsNullOrWhiteSpace(outputJson))
         {
-            return (false, false, null, "The OpenAI response did not contain JSON output.");
+            return (false, false, null, "The model response did not contain JSON output.");
         }
 
         FhirDraftPayload? payload;
@@ -214,7 +220,55 @@ public sealed class FhirDraftingService
             null);
     }
 
-    private string BuildRequestBody(StructuredLabReport report, PromptBudget budget)
+    private string BuildOpenAiResponsesRequestBody(StructuredLabReport report, PromptBudget budget)
+    {
+        var (systemPrompt, userPrompt) = BuildPromptMessages(report, budget);
+
+        var payload = new
+        {
+            model = _openAiOptions.Model,
+            input = new object[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt },
+            },
+            text = new
+            {
+                format = new
+                {
+                    type = "json_object",
+                }
+            },
+            max_output_tokens = budget.MaxOutputTokens,
+        };
+
+        return JsonSerializer.Serialize(payload, JsonOptions);
+    }
+
+    private string BuildOllamaChatRequestBody(StructuredLabReport report, PromptBudget budget)
+    {
+        var (systemPrompt, userPrompt) = BuildPromptMessages(report, budget);
+        var payload = new
+        {
+            model = _openAiOptions.Model,
+            stream = false,
+            format = "json",
+            messages = new object[]
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userPrompt },
+            },
+            options = new
+            {
+                temperature = 0.1,
+                num_predict = budget.MaxOutputTokens,
+            },
+        };
+
+        return JsonSerializer.Serialize(payload, JsonOptions);
+    }
+
+    private (string SystemPrompt, string UserPrompt) BuildPromptMessages(StructuredLabReport report, PromptBudget budget)
     {
         var systemPrompt = """
             Convert a structured lab report into draft FHIR resources.
@@ -249,25 +303,7 @@ public sealed class FhirDraftingService
             {structuredReportJson}
             """;
 
-        var payload = new
-        {
-            model = _openAiOptions.Model,
-            input = new object[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userPrompt },
-            },
-            text = new
-            {
-                format = new
-                {
-                    type = "json_object",
-                }
-            },
-            max_output_tokens = budget.MaxOutputTokens,
-        };
-
-        return JsonSerializer.Serialize(payload, JsonOptions);
+        return (systemPrompt, userPrompt);
     }
 
     private string BuildStructuredReportJson(StructuredLabReport report, PromptBudget budget)
@@ -354,6 +390,19 @@ public sealed class FhirDraftingService
         using var document = JsonDocument.Parse(responseBody);
         var root = document.RootElement;
 
+        if (root.TryGetProperty("message", out var messageElement)
+            && messageElement.ValueKind == JsonValueKind.Object
+            && messageElement.TryGetProperty("content", out var messageContent)
+            && messageContent.ValueKind == JsonValueKind.String)
+        {
+            return SanitizeJsonCandidate(messageContent.GetString());
+        }
+
+        if (root.TryGetProperty("response", out var ollamaResponse) && ollamaResponse.ValueKind == JsonValueKind.String)
+        {
+            return SanitizeJsonCandidate(ollamaResponse.GetString());
+        }
+
         if (root.TryGetProperty("output_text", out var outputText) && outputText.ValueKind == JsonValueKind.String)
         {
             return SanitizeJsonCandidate(outputText.GetString());
@@ -381,6 +430,21 @@ public sealed class FhirDraftingService
         }
 
         return null;
+    }
+
+    private bool IsOllamaProvider()
+    {
+        if (string.Equals(_openAiOptions.Provider, "Ollama", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!Uri.TryCreate(_openAiOptions.BaseUrl, UriKind.Absolute, out var uri))
+        {
+            return false;
+        }
+
+        return uri.Port == 11434;
     }
 
     private static string? SanitizeJsonCandidate(string? candidate)
