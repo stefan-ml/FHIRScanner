@@ -11,6 +11,7 @@ builder.Services.Configure<OcrProcessingOptions>(builder.Configuration.GetSectio
 builder.Services.Configure<OpenAiOptions>(builder.Configuration.GetSection("OpenAI"));
 builder.Services.Configure<FhirDraftOptions>(builder.Configuration.GetSection("FhirDrafting"));
 builder.Services.AddScoped<OcrProcessingService>();
+builder.Services.AddScoped<LabReportStructuringService>();
 builder.Services.AddHttpClient<FhirDraftingService>((serviceProvider, client) =>
 {
     var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<OpenAiOptions>>().Value;

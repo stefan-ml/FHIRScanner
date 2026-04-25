@@ -3,6 +3,7 @@
 @inject IWebHostEnvironment Environment
 @inject ILogger<Home> Logger
 @inject FHIRScanner.Services.OcrProcessingService OcrProcessingService
+@inject FHIRScanner.Services.LabReportStructuringService LabReportStructuringService
 @inject FHIRScanner.Services.FhirDraftingService FhirDraftingService
 
 <PageTitle>OCR Inspector</PageTitle>
@@ -14,11 +15,11 @@
             OCR tuning workspace
         </div>
 
-        <h1>Upload images, inspect OCR, then generate draft FHIR resources.</h1>
+        <h1>Upload images, inspect OCR, structure the lab rows, then generate draft FHIR resources.</h1>
 
         <p class="hero-lead">
-            OCR still comes first. Once the extracted text and coordinates look solid, you can send that OCR result to
-            OpenAI and get a draft set of FHIR resources without losing the visual OCR inspector.
+            OCR still comes first. Once the extracted text and coordinates look solid, the app now builds a structured
+            lab-report JSON with sections and rows before anything tries to draft FHIR.
         </p>
 
         <div class="hero-actions">
@@ -33,7 +34,7 @@
             </div>
             <div class="stat-card">
                 <span class="stat-label">Output</span>
-                <strong>OCR layout + optional FHIR draft</strong>
+                <strong>OCR layout + structured lab JSON + optional FHIR draft</strong>
             </div>
             <div class="stat-card">
                 <span class="stat-label">Selection</span>
@@ -149,6 +150,15 @@
                                 <span class="result-meta">OCR JSON: @file.OutputRelativePath</span>
                             }
 
+                            @if (file.StructuredReport is not null)
+                            {
+                                <div class="ocr-summary">
+                                    <span class="result-meta">Sections: @file.StructuredReport.Sections.Count</span>
+                                    <span class="result-meta">Rows: @GetStructuredRowCount(file)</span>
+                                    <span class="result-meta">Schema warnings: @file.StructuredReport.Warnings.Count</span>
+                                </div>
+                            }
+
                             @if (!string.IsNullOrWhiteSpace(file.FhirOutputRelativePath))
                             {
                                 <span class="result-meta">FHIR draft JSON: @file.FhirOutputRelativePath</span>
@@ -229,6 +239,32 @@
                                     <summary>View raw OCR JSON</summary>
                                     <pre>@file.RawJson</pre>
                                 </details>
+
+                                @if (file.StructuredReport is not null)
+                                {
+                                    <div class="ocr-coordinates-card">
+                                        <div class="visual-header">
+                                            <strong>Structured lab report</strong>
+                                            <span>@GetStructuredRowCount(file) extracted row@(GetStructuredRowCount(file) == 1 ? string.Empty : "s")</span>
+                                        </div>
+
+                                        <div class="coordinate-list">
+                                            @foreach (var reportSection in file.StructuredReport.Sections.Where(section => section.Rows.Count > 0))
+                                            {
+                                                <div class="coordinate-row">
+                                                    <strong>@reportSection.Name</strong>
+                                                    <span>@reportSection.Rows.Count row@(reportSection.Rows.Count == 1 ? string.Empty : "s")</span>
+                                                    <span>@string.Join(" | ", reportSection.Rows.Take(3).Select(row => $"{row.TestName}: {row.NumericValueText ?? row.ResultText} {row.NormalizedUnit ?? row.UnitText}".Trim()))</span>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <details class="result-json">
+                                        <summary>View structured lab report JSON</summary>
+                                        <pre>@file.StructuredReportJson</pre>
+                                    </details>
+                                }
                             }
 
                             @if (file.FhirResources.Count > 0 || file.FhirWarnings.Count > 0 || file.FhirMissingFields.Count > 0)
@@ -347,8 +383,8 @@
                 <div class="pipeline-step">
                     <span>04</span>
                     <div>
-                        <strong>Generate draft FHIR from OCR</strong>
-                        <p>The app sends the OCR JSON to OpenAI and asks for draft FHIR resources, warnings, and missing fields in one JSON response.</p>
+                        <strong>Generate draft FHIR from structured rows</strong>
+                        <p>The app first converts OCR into sectioned lab rows, then sends that structured report to the model for draft FHIR generation.</p>
                     </div>
                 </div>
             </div>
@@ -366,7 +402,7 @@
                 <li>Coordinates do not inherently make OCR more accurate</li>
                 <li>They do make it much easier to see which regions Tesseract is missing or splitting badly</li>
                 <li>This gives us a better base for tuning preprocessing, segmentation mode, and later model choices</li>
-                <li>Once the text quality is solid, a second step can draft FHIR resources from the OCR JSON</li>
+                <li>Once the text quality is solid, a second step can draft FHIR resources from the structured lab JSON</li>
             </ul>
         </div>
     </div>
@@ -522,6 +558,8 @@
                 file.WordCount = 0;
                 file.Lines.Clear();
                 file.LayoutResult = null;
+                file.StructuredReport = null;
+                file.StructuredReportJson = null;
                 file.LastError = null;
                 ResetFhirDraft(file);
             }
@@ -552,6 +590,15 @@
                     file.WordCount = result.Layout.WordCount;
                     file.Lines.AddRange(result.Layout.Lines);
                     file.LayoutResult = result.Layout;
+
+                    var structuredResult = LabReportStructuringService.Parse(result.Layout);
+                    file.StructuredReport = structuredResult.Report;
+                    file.StructuredReportJson = structuredResult.RawJson;
+
+                    if (!structuredResult.Succeeded && !string.IsNullOrWhiteSpace(structuredResult.ErrorMessage))
+                    {
+                        file.LastError = structuredResult.ErrorMessage;
+                    }
                 }
 
                 if (result.Succeeded)
@@ -597,13 +644,13 @@
             var successCount = 0;
             var failedCount = 0;
 
-            foreach (var file in UploadedFiles.Where(file => file.LayoutResult is not null))
+            foreach (var file in UploadedFiles.Where(file => GetStructuredRowCount(file) > 0))
             {
                 ResetFhirDraft(file);
                 file.FhirStatus = "Generating FHIR";
                 await InvokeAsync(StateHasChanged);
 
-                var result = await FhirDraftingService.GenerateAsync(file.StoredName, file.LayoutResult);
+                var result = await FhirDraftingService.GenerateAsync(file.StoredName, file.StructuredReport);
                 file.FhirStatus = result.Status;
                 file.FhirOutputRelativePath = result.OutputRelativePath;
                 file.FhirRawJson = result.RawJson;
@@ -741,7 +788,10 @@
 
     private static string GetUploadedImageUrl(UploadedDocument file) => $"/uploads/{Uri.EscapeDataString(file.StoredName)}";
 
-    private bool CanGenerateFhirDrafts() => UploadedFiles.Any(file => file.LayoutResult is not null);
+    private bool CanGenerateFhirDrafts() => UploadedFiles.Any(file => GetStructuredRowCount(file) > 0);
+
+    private static int GetStructuredRowCount(UploadedDocument file)
+        => file.StructuredReport?.Sections.Sum(section => section.Rows.Count) ?? 0;
 
     private static void ResetFhirDraft(UploadedDocument file)
     {
@@ -793,6 +843,8 @@
         public int WordCount { get; set; }
         public List<FHIRScanner.Services.OcrLineBox> Lines { get; } = [];
         public FHIRScanner.Services.OcrLayoutResult? LayoutResult { get; set; }
+        public FHIRScanner.Services.StructuredLabReport? StructuredReport { get; set; }
+        public string? StructuredReportJson { get; set; }
         public string? LastError { get; set; }
         public string? FhirStatus { get; set; }
         public string? FhirOutputRelativePath { get; set; }
