@@ -521,7 +521,6 @@
                 file.LineCount = 0;
                 file.WordCount = 0;
                 file.Lines.Clear();
-                file.Words.Clear();
                 file.LayoutResult = null;
                 file.LastError = null;
                 ResetFhirDraft(file);
@@ -552,7 +551,6 @@
                     file.LineCount = result.Layout.LineCount;
                     file.WordCount = result.Layout.WordCount;
                     file.Lines.AddRange(result.Layout.Lines);
-                    file.Words.AddRange(result.Layout.Words);
                     file.LayoutResult = result.Layout;
                 }
 
@@ -605,7 +603,7 @@
                 file.FhirStatus = "Generating FHIR";
                 await InvokeAsync(StateHasChanged);
 
-                var result = await FhirDraftingService.GenerateAsync(file.StoredName, file.LayoutResult, file.RawJson);
+                var result = await FhirDraftingService.GenerateAsync(file.StoredName, file.LayoutResult);
                 file.FhirStatus = result.Status;
                 file.FhirOutputRelativePath = result.OutputRelativePath;
                 file.FhirRawJson = result.RawJson;
@@ -794,7 +792,6 @@
         public int LineCount { get; set; }
         public int WordCount { get; set; }
         public List<FHIRScanner.Services.OcrLineBox> Lines { get; } = [];
-        public List<FHIRScanner.Services.OcrWordBox> Words { get; } = [];
         public FHIRScanner.Services.OcrLayoutResult? LayoutResult { get; set; }
         public string? LastError { get; set; }
         public string? FhirStatus { get; set; }

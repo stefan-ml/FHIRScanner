@@ -25,38 +25,11 @@ public sealed class OcrLayoutResult
     public int WordCount { get; init; }
 
     public List<OcrLineBox> Lines { get; init; } = [];
-
-    public List<OcrWordBox> Words { get; init; } = [];
 }
 
 public sealed class OcrLineBox
 {
     public int LineIndex { get; init; }
-
-    public int Page { get; init; }
-
-    public int Block { get; init; }
-
-    public int Paragraph { get; init; }
-
-    public int Line { get; init; }
-
-    public string Text { get; init; } = string.Empty;
-
-    public double Confidence { get; init; }
-
-    public int Left { get; init; }
-
-    public int Top { get; init; }
-
-    public int Width { get; init; }
-
-    public int Height { get; init; }
-}
-
-public sealed class OcrWordBox
-{
-    public int WordIndex { get; init; }
 
     public int Page { get; init; }
 

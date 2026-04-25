@@ -2,6 +2,9 @@
 **/bin/
 **/obj/
 **/obj_verify/
+_build*/
+_buildobj*/
+_tmpbuild*/
 
 # User and IDE files
 .vs/

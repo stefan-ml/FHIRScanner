@@ -36,10 +36,9 @@ public sealed class FhirDraftingService
     public async Task<FhirDraftResult> GenerateAsync(
         string storedFileName,
         OcrLayoutResult? layout,
-        string? rawOcrJson,
         CancellationToken cancellationToken = default)
     {
-        if (layout is null || string.IsNullOrWhiteSpace(rawOcrJson))
+        if (layout is null)
         {
             return new FhirDraftResult(
                 false,
