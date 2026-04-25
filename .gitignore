@@ -11,6 +11,9 @@
 
 # Local uploads and runtime data
 FHIRScanner/Storage/Uploads/
+FHIRScanner/Storage/Outputs/
+FHIRScanner/Storage/OcrResults/
+FHIRScanner/Storage/FhirDrafts/
 
 # Logs
 *.log

@@ -2,49 +2,51 @@
 @rendermode InteractiveServer
 @inject IWebHostEnvironment Environment
 @inject ILogger<Home> Logger
+@inject FHIRScanner.Services.OcrProcessingService OcrProcessingService
+@inject FHIRScanner.Services.FhirDraftingService FhirDraftingService
 
-<PageTitle>FHIR Scanner</PageTitle>
+<PageTitle>OCR Inspector</PageTitle>
 
 <section class="hero-shell">
     <div class="hero-copy">
         <div class="eyebrow">
             <span class="eyebrow-dot"></span>
-            Intake workspace
+            OCR tuning workspace
         </div>
 
-        <h1>Upload PDFs and medical images for structured FHIR extraction.</h1>
+        <h1>Upload images, inspect OCR, then generate draft FHIR resources.</h1>
 
         <p class="hero-lead">
-            Start the pipeline with referral letters, discharge summaries, lab scans, and supporting images.
-            This page is designed as the intake step before OCR, validation, and FHIR resource generation.
+            OCR still comes first. Once the extracted text and coordinates look solid, you can send that OCR result to
+            OpenAI and get a draft set of FHIR resources without losing the visual OCR inspector.
         </p>
 
         <div class="hero-actions">
-            <label class="primary-cta" for="document-upload">Choose documents</label>
-            <a class="secondary-cta" href="#pipeline">View pipeline</a>
+            <label class="primary-cta" for="document-upload">Choose images</label>
+            <a class="secondary-cta" href="#results">Jump to results</a>
         </div>
 
         <div class="hero-stats">
             <div class="stat-card">
                 <span class="stat-label">Accepted</span>
-                <strong>PDF, PNG, JPG</strong>
+                <strong>PNG, JPG, TIFF, BMP, WEBP</strong>
             </div>
             <div class="stat-card">
-                <span class="stat-label">Ready for</span>
-                <strong>OCR + FHIR mapping</strong>
+                <span class="stat-label">Output</span>
+                <strong>OCR layout + optional FHIR draft</strong>
             </div>
             <div class="stat-card">
                 <span class="stat-label">Selection</span>
-                <strong>@UploadedFiles.Count file@(UploadedFiles.Count == 1 ? string.Empty : "s")</strong>
+                <strong>@UploadedFiles.Count image@(UploadedFiles.Count == 1 ? string.Empty : "s")</strong>
             </div>
         </div>
     </div>
 
     <div class="upload-panel">
         <div class="upload-panel-header">
-            <span class="panel-kicker">Document intake</span>
-            <h2>Secure upload zone</h2>
-            <p>Select one or more source files to prepare them for downstream processing.</p>
+            <span class="panel-kicker">Image intake</span>
+            <h2>OCR-only upload zone</h2>
+            <p>Start with images first so we can tune recognition quality and inspect layout boxes clearly.</p>
         </div>
 
         <label class="upload-dropzone" for="document-upload">
@@ -52,15 +54,15 @@
                        class="upload-input"
                        OnChange="HandleFilesSelected"
                        multiple
-                       accept=".pdf,image/png,image/jpeg,image/jpg,image/tiff,image/bmp,image/webp" />
+                       accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,image/png,image/jpeg,image/jpg,image/tiff,image/bmp,image/webp" />
 
             <div class="upload-icon" aria-hidden="true">
                 <span></span>
                 <span></span>
             </div>
 
-            <strong>Drop files here or click to browse</strong>
-            <span>Best for scanned PDFs, referral letters, radiology snapshots, and lab images.</span>
+            <strong>Drop images here or click to browse</strong>
+            <span>Best results come from high-contrast scans or straightened phone photos with readable text.</span>
         </label>
 
         @if (!string.IsNullOrWhiteSpace(UploadMessage))
@@ -76,29 +78,38 @@
         <div class="upload-guidance">
             <div>
                 <span class="guidance-label">Recommended</span>
-                <strong>High-resolution PDF bundles</strong>
+                <strong>Sharp text and minimal blur</strong>
             </div>
             <div>
-                <span class="guidance-label">Storage</span>
-                <strong>Private server folder</strong>
+                <span class="guidance-label">Run mode</span>
+                <strong>OCR first, FHIR draft second</strong>
+            </div>
+            <div>
+                <span class="guidance-label">What to inspect</span>
+                <strong>Confidence, lines, and word boxes</strong>
             </div>
         </div>
     </div>
 </section>
 
-<section class="workspace-grid">
+<section class="workspace-grid" id="results">
     <div class="selection-card">
         <div class="section-heading">
             <div>
-                <span class="section-kicker">Current selection</span>
-                <h2>Files ready for processing</h2>
+                <span class="section-kicker">Current batch</span>
+                <h2>Images ready for OCR inspection</h2>
             </div>
             <div class="section-actions">
                 <span class="section-pill">@FormatFileCount(UploadedFiles.Count)</span>
                 <button class="action-button action-button-primary"
                         @onclick="RunProcessingAsync"
-                        disabled="@(UploadedFiles.Count == 0 || IsProcessing)">
-                    @(IsProcessing ? "Processing..." : "Run processing")
+                        disabled="@(UploadedFiles.Count == 0 || IsProcessing || IsGeneratingFhir)">
+                    @(IsProcessing ? "Running OCR..." : "Run OCR")
+                </button>
+                <button class="action-button action-button-secondary"
+                        @onclick="RunFhirDraftingAsync"
+                        disabled="@(!CanGenerateFhirDrafts() || IsProcessing || IsGeneratingFhir)">
+                    @(IsGeneratingFhir ? "Generating FHIR..." : "Generate FHIR Draft")
                 </button>
             </div>
         </div>
@@ -106,8 +117,8 @@
         @if (UploadedFiles.Count == 0)
         {
             <div class="empty-state">
-                <strong>No files selected yet</strong>
-                <p>Once you choose documents, they'll be saved to private server storage and listed here.</p>
+                <strong>No images selected yet</strong>
+                <p>Upload one or more screenshots, scans, or phone captures to start evaluating OCR quality.</p>
             </div>
         }
         else
@@ -115,7 +126,7 @@
             <div class="file-list">
                 @foreach (var file in UploadedFiles)
                 {
-                    <div class="file-row">
+                    <article class="file-row file-row-rich">
                         <div class="file-badge">@GetFileBadge(file)</div>
                         <div class="file-meta">
                             <strong>@file.OriginalName</strong>
@@ -123,6 +134,156 @@
                             <span>Saved as @file.StoredName</span>
                             <span>@file.RelativePath</span>
                             <span class="status-chip @GetStatusClass(file.Status)">@file.Status</span>
+
+                            @if (file.LineCount > 0 || file.WordCount > 0)
+                            {
+                                <div class="ocr-summary">
+                                    <span class="result-meta">Lines: @file.LineCount</span>
+                                    <span class="result-meta">Words: @file.WordCount</span>
+                                    <span class="result-meta">Avg confidence: @file.AverageConfidence.ToString("0.0")</span>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(file.OutputRelativePath))
+                            {
+                                <span class="result-meta">OCR JSON: @file.OutputRelativePath</span>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(file.FhirOutputRelativePath))
+                            {
+                                <span class="result-meta">FHIR draft JSON: @file.FhirOutputRelativePath</span>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(file.FhirStatus))
+                            {
+                                <span class="result-meta">FHIR status: @file.FhirStatus</span>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(file.LastError))
+                            {
+                                <div class="result-preview result-preview-error">
+                                    <strong>Processing error</strong>
+                                    <p>@file.LastError</p>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(file.FhirError))
+                            {
+                                <div class="result-preview result-preview-error">
+                                    <strong>FHIR drafting error</strong>
+                                    <p>@file.FhirError</p>
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(file.FullText))
+                            {
+                                <div class="ocr-results-grid">
+                                    <div class="ocr-canvas-card">
+                                        <div class="visual-header">
+                                            <strong>Detected lines over image</strong>
+                                            <span>@file.ImageWidth x @file.ImageHeight px</span>
+                                        </div>
+
+                                        <div class="ocr-canvas">
+                                            <img class="ocr-image" src="@GetUploadedImageUrl(file)" alt="@file.OriginalName" />
+                                            <div class="ocr-overlay">
+                                                @foreach (var line in file.Lines)
+                                                {
+                                                    <div class="ocr-box"
+                                                         title="@($"Line {line.LineIndex}: {line.Text} ({line.Confidence:0.0})")"
+                                                         style="@BuildBoxStyle(file, line.Left, line.Top, line.Width, line.Height)"></div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="ocr-text-card">
+                                        <div class="visual-header">
+                                            <strong>Recognized text</strong>
+                                            <span>Line-preserving output</span>
+                                        </div>
+                                        <pre class="ocr-text-output">@file.FullText</pre>
+                                    </div>
+                                </div>
+
+                                <div class="ocr-coordinates-card">
+                                    <div class="visual-header">
+                                        <strong>Line coordinates</strong>
+                                        <span>Top 30 lines</span>
+                                    </div>
+
+                                    <div class="coordinate-list">
+                                        @foreach (var line in file.Lines.Take(30))
+                                        {
+                                            <div class="coordinate-row">
+                                                <strong>L@line.LineIndex: @line.Text</strong>
+                                                <span>conf @line.Confidence.ToString("0.0")</span>
+                                                <span>page @line.Page, block @line.Block, paragraph @line.Paragraph, line @line.Line</span>
+                                                <span>x @line.Left, y @line.Top, w @line.Width, h @line.Height</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+
+                                <details class="result-json">
+                                    <summary>View raw OCR JSON</summary>
+                                    <pre>@file.RawJson</pre>
+                                </details>
+                            }
+
+                            @if (file.FhirResources.Count > 0 || file.FhirWarnings.Count > 0 || file.FhirMissingFields.Count > 0)
+                            {
+                                <div class="fhir-card">
+                                    <div class="visual-header">
+                                        <strong>FHIR draft</strong>
+                                        <span>@file.FhirResources.Count resource@(file.FhirResources.Count == 1 ? string.Empty : "s")</span>
+                                    </div>
+
+                                    @if (file.FhirWarnings.Count > 0)
+                                    {
+                                        <div class="fhir-note-group">
+                                            <strong>Warnings</strong>
+                                            <ul class="fhir-list">
+                                                @foreach (var warning in file.FhirWarnings)
+                                                {
+                                                    <li>@warning</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    }
+
+                                    @if (file.FhirMissingFields.Count > 0)
+                                    {
+                                        <div class="fhir-note-group">
+                                            <strong>Missing fields</strong>
+                                            <ul class="fhir-list">
+                                                @foreach (var missingField in file.FhirMissingFields)
+                                                {
+                                                    <li>@missingField</li>
+                                                }
+                                            </ul>
+                                        </div>
+                                    }
+
+                                    <div class="fhir-resource-list">
+                                        @foreach (var resource in file.FhirResources)
+                                        {
+                                            <details class="result-json">
+                                                <summary>@resource.ResourceType - @resource.Rationale</summary>
+                                                <pre>@resource.Resource.GetRawText()</pre>
+                                            </details>
+                                        }
+                                    </div>
+                                </div>
+
+                                @if (!string.IsNullOrWhiteSpace(file.FhirRawJson))
+                                {
+                                    <details class="result-json">
+                                        <summary>View raw FHIR draft JSON</summary>
+                                        <pre>@file.FhirRawJson</pre>
+                                    </details>
+                                }
+                            }
                         </div>
                         <div class="file-actions">
                             <button class="file-action-button file-action-danger"
@@ -131,7 +292,7 @@
                                 Delete
                             </button>
                         </div>
-                    </div>
+                    </article>
                 }
             </div>
 
@@ -145,7 +306,7 @@
                     <strong>@GetProcessingSummary()</strong>
                 </div>
                 <div>
-                    <span class="guidance-label">Server folder</span>
+                    <span class="guidance-label">Upload folder</span>
                     <strong>@StorageFolderDisplay</strong>
                 </div>
             </div>
@@ -156,8 +317,8 @@
         <div class="info-card" id="pipeline">
             <div class="section-heading">
                 <div>
-                    <span class="section-kicker">Processing map</span>
-                    <h2>FHIR conversion pipeline</h2>
+                    <span class="section-kicker">OCR path</span>
+                    <h2>What this prototype does</h2>
                 </div>
             </div>
 
@@ -165,22 +326,29 @@
                 <div class="pipeline-step">
                     <span>01</span>
                     <div>
-                        <strong>Upload and classify</strong>
-                        <p>Capture PDFs and images, then tag them as patient, encounter, lab, or report inputs.</p>
+                        <strong>Save the uploaded image</strong>
+                        <p>The image is stored in server-side upload storage so repeated OCR runs use the exact same source file.</p>
                     </div>
                 </div>
                 <div class="pipeline-step">
                     <span>02</span>
                     <div>
-                        <strong>OCR and text cleanup</strong>
-                        <p>Extract readable content, preserve page structure, and normalize medical text.</p>
+                        <strong>Preprocess for OCR</strong>
+                        <p>The Python script rotates by EXIF, converts to grayscale, boosts contrast, sharpens, and upscales smaller images before OCR.</p>
                     </div>
                 </div>
                 <div class="pipeline-step">
                     <span>03</span>
                     <div>
-                        <strong>FHIR resource assembly</strong>
-                        <p>Map clinical facts into structured resources such as Patient, Observation, and Encounter.</p>
+                        <strong>Inspect text with coordinates</strong>
+                        <p>The result includes recognized lines and words with bounding boxes, so we can debug layout and recognition quality visually.</p>
+                    </div>
+                </div>
+                <div class="pipeline-step">
+                    <span>04</span>
+                    <div>
+                        <strong>Generate draft FHIR from OCR</strong>
+                        <p>The app sends the OCR JSON to OpenAI and asks for draft FHIR resources, warnings, and missing fields in one JSON response.</p>
                     </div>
                 </div>
             </div>
@@ -189,16 +357,16 @@
         <div class="info-card compact-card">
             <div class="section-heading">
                 <div>
-                    <span class="section-kicker">Accepted inputs</span>
-                    <h2>Upload checklist</h2>
+                    <span class="section-kicker">Important note</span>
+                    <h2>Coordinates help analysis</h2>
                 </div>
             </div>
 
             <ul class="check-list">
-                <li>Multi-page PDFs for scanned documentation</li>
-                <li>PNG or JPG for phone captures</li>
-                <li>Clean, readable pages with visible patient metadata</li>
-                <li>Consistent file naming for later audit and traceability</li>
+                <li>Coordinates do not inherently make OCR more accurate</li>
+                <li>They do make it much easier to see which regions Tesseract is missing or splitting badly</li>
+                <li>This gives us a better base for tuning preprocessing, segmentation mode, and later model choices</li>
+                <li>Once the text quality is solid, a second step can draft FHIR resources from the OCR JSON</li>
             </ul>
         </div>
     </div>
@@ -208,10 +376,22 @@
     private const int MaxAllowedFiles = 20;
     private const long MaxFileSizeBytes = 50L * 1024 * 1024;
 
+    private static readonly HashSet<string> SupportedImageExtensions =
+    [
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".tif",
+        ".tiff",
+        ".bmp",
+        ".webp",
+    ];
+
     private readonly List<UploadedDocument> UploadedFiles = [];
     private string? UploadMessage;
     private string? UploadError;
     private bool IsProcessing;
+    private bool IsGeneratingFhir;
 
     private string StorageFolderDisplay => Path.Combine("Storage", "Uploads");
 
@@ -236,7 +416,13 @@
             try
             {
                 var originalName = Path.GetFileName(file.Name);
-                var extension = Path.GetExtension(originalName);
+                var extension = Path.GetExtension(originalName).ToLowerInvariant();
+                if (!SupportedImageExtensions.Contains(extension))
+                {
+                    UploadError = $"{originalName} was skipped because OCR-only mode currently accepts images only.";
+                    continue;
+                }
+
                 var safeStem = CreateSafeFileStem(Path.GetFileNameWithoutExtension(originalName));
                 var storedName = $"{DateTime.UtcNow:yyyyMMddHHmmssfff}_{safeStem}_{Guid.NewGuid():N}{extension}";
                 var destinationPath = Path.Combine(uploadRoot, storedName);
@@ -255,15 +441,15 @@
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "Failed to save uploaded document {FileName}", file.Name);
-                UploadError = $"One or more files could not be saved. Maximum size per file is {FormatFileSize(MaxFileSizeBytes)}.";
+                Logger.LogError(ex, "Failed to save uploaded image {FileName}", file.Name);
+                UploadError = $"One or more images could not be saved. Maximum size per file is {FormatFileSize(MaxFileSizeBytes)}.";
             }
         }
 
         if (savedFiles.Count > 0)
         {
             UploadedFiles.AddRange(savedFiles);
-            UploadMessage = $"{savedFiles.Count} file{(savedFiles.Count == 1 ? string.Empty : "s")} saved to {StorageFolderDisplay}.";
+            UploadMessage = $"{savedFiles.Count} image{(savedFiles.Count == 1 ? string.Empty : "s")} saved to {StorageFolderDisplay}.";
         }
     }
 
@@ -280,12 +466,30 @@
                 File.Delete(targetPath);
             }
 
+            if (!string.IsNullOrWhiteSpace(file.OutputRelativePath))
+            {
+                var outputPath = Path.Combine(Environment.ContentRootPath, file.OutputRelativePath);
+                if (File.Exists(outputPath))
+                {
+                    File.Delete(outputPath);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(file.FhirOutputRelativePath))
+            {
+                var fhirOutputPath = Path.Combine(Environment.ContentRootPath, file.FhirOutputRelativePath);
+                if (File.Exists(fhirOutputPath))
+                {
+                    File.Delete(fhirOutputPath);
+                }
+            }
+
             UploadedFiles.Remove(file);
             UploadMessage = $"{file.OriginalName} was deleted from {StorageFolderDisplay}.";
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to delete uploaded document {FileName}", file.OriginalName);
+            Logger.LogError(ex, "Failed to delete uploaded image {FileName}", file.OriginalName);
             UploadError = $"Could not delete {file.OriginalName}.";
         }
 
@@ -308,24 +512,69 @@
             foreach (var file in UploadedFiles)
             {
                 file.Status = "Queued";
+                file.OutputRelativePath = null;
+                file.RawJson = null;
+                file.FullText = null;
+                file.ImageWidth = 0;
+                file.ImageHeight = 0;
+                file.AverageConfidence = 0;
+                file.LineCount = 0;
+                file.WordCount = 0;
+                file.Lines.Clear();
+                file.Words.Clear();
+                file.LayoutResult = null;
+                file.LastError = null;
+                ResetFhirDraft(file);
             }
 
             await InvokeAsync(StateHasChanged);
+
+            var successCount = 0;
+            var failedCount = 0;
 
             foreach (var file in UploadedFiles)
             {
                 file.Status = "Processing";
                 await InvokeAsync(StateHasChanged);
-                await Task.Delay(250);
-                file.Status = "Ready for FHIR";
+
+                var result = await OcrProcessingService.ProcessAsync(file.StoredName);
+                file.Status = result.Status;
+                file.OutputRelativePath = result.OutputRelativePath;
+                file.RawJson = result.RawJson;
+                file.LastError = result.ErrorMessage;
+
+                if (result.Layout is not null)
+                {
+                    file.FullText = result.Layout.FullText;
+                    file.ImageWidth = result.Layout.ImageWidth;
+                    file.ImageHeight = result.Layout.ImageHeight;
+                    file.AverageConfidence = result.Layout.AverageConfidence;
+                    file.LineCount = result.Layout.LineCount;
+                    file.WordCount = result.Layout.WordCount;
+                    file.Lines.AddRange(result.Layout.Lines);
+                    file.Words.AddRange(result.Layout.Words);
+                    file.LayoutResult = result.Layout;
+                }
+
+                if (result.Succeeded)
+                {
+                    successCount++;
+                }
+                else
+                {
+                    failedCount++;
+                }
+
+                await InvokeAsync(StateHasChanged);
             }
 
-            UploadMessage = $"{UploadedFiles.Count} file{(UploadedFiles.Count == 1 ? string.Empty : "s")} processed and marked ready for the next FHIR step.";
+            UploadMessage = $"{successCount} image{(successCount == 1 ? string.Empty : "s")} processed for OCR inspection."
+                + (failedCount > 0 ? $" {failedCount} image{(failedCount == 1 ? string.Empty : "s")} need attention." : string.Empty);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed while running document processing");
-            UploadError = "Processing could not be completed.";
+            Logger.LogError(ex, "Failed while running OCR processing");
+            UploadError = "OCR processing could not be completed.";
         }
         finally
         {
@@ -334,11 +583,73 @@
         }
     }
 
+    private async Task RunFhirDraftingAsync()
+    {
+        if (!CanGenerateFhirDrafts() || IsGeneratingFhir || IsProcessing)
+        {
+            return;
+        }
+
+        UploadMessage = null;
+        UploadError = null;
+        IsGeneratingFhir = true;
+
+        try
+        {
+            var successCount = 0;
+            var failedCount = 0;
+
+            foreach (var file in UploadedFiles.Where(file => file.LayoutResult is not null))
+            {
+                ResetFhirDraft(file);
+                file.FhirStatus = "Generating FHIR";
+                await InvokeAsync(StateHasChanged);
+
+                var result = await FhirDraftingService.GenerateAsync(file.StoredName, file.LayoutResult, file.RawJson);
+                file.FhirStatus = result.Status;
+                file.FhirOutputRelativePath = result.OutputRelativePath;
+                file.FhirRawJson = result.RawJson;
+                file.FhirError = result.ErrorMessage;
+
+                if (result.Payload is not null)
+                {
+                    file.FhirResources.AddRange(result.Payload.Resources);
+                    file.FhirWarnings.AddRange(result.Payload.Warnings);
+                    file.FhirMissingFields.AddRange(result.Payload.MissingFields);
+                }
+
+                if (result.Succeeded)
+                {
+                    successCount++;
+                }
+                else
+                {
+                    failedCount++;
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
+
+            UploadMessage = $"{successCount} OCR result{(successCount == 1 ? string.Empty : "s")} converted into draft FHIR output."
+                + (failedCount > 0 ? $" {failedCount} draft{(failedCount == 1 ? string.Empty : "s")} need attention." : string.Empty);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed while generating FHIR drafts");
+            UploadError = "FHIR draft generation could not be completed.";
+        }
+        finally
+        {
+            IsGeneratingFhir = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private static string FormatFileCount(int count) => count switch
     {
         0 => "Waiting for upload",
-        1 => "1 file selected",
-        _ => $"{count} files selected"
+        1 => "1 image selected",
+        _ => $"{count} images selected"
     };
 
     private static string FormatFileSize(long bytes)
@@ -368,13 +679,12 @@
 
         return extension switch
         {
-            ".pdf" => "PDF",
             ".png" => "PNG",
             ".jpg" or ".jpeg" => "JPG",
             ".tif" or ".tiff" => "TIF",
             ".bmp" => "BMP",
             ".webp" => "WEBP",
-            _ => "FILE"
+            _ => "IMG"
         };
     }
 
@@ -383,7 +693,8 @@
         "Saved" => "status-saved",
         "Queued" => "status-queued",
         "Processing" => "status-processing",
-        "Ready for FHIR" => "status-ready",
+        "OCR ready" => "status-ready",
+        "OCR failed" or "Missing file" or "Missing output" or "OCR unavailable" or "Unsupported file" or "Invalid output" => "status-error",
         _ => string.Empty
     };
 
@@ -391,7 +702,12 @@
     {
         if (IsProcessing)
         {
-            return "Processing documents";
+            return "Running OCR";
+        }
+
+        if (IsGeneratingFhir)
+        {
+            return "Generating FHIR drafts";
         }
 
         if (UploadedFiles.Count == 0)
@@ -399,8 +715,13 @@
             return "Waiting for upload";
         }
 
-        return UploadedFiles.All(file => file.Status == "Ready for FHIR")
-            ? "Ready for FHIR step"
+        if (UploadedFiles.Any(file => file.Status is "OCR failed" or "Missing file" or "Missing output" or "OCR unavailable" or "Unsupported file" or "Invalid output"))
+        {
+            return "Completed with issues";
+        }
+
+        return UploadedFiles.All(file => file.Status == "OCR ready")
+            ? "OCR results ready"
             : "Saved to private storage";
     }
 
@@ -408,7 +729,7 @@
     {
         if (string.IsNullOrWhiteSpace(rawFileName))
         {
-            return "document";
+            return "image";
         }
 
         var invalidChars = Path.GetInvalidFileNameChars();
@@ -417,7 +738,33 @@
             .ToArray());
 
         cleaned = cleaned.Replace(' ', '_');
-        return string.IsNullOrWhiteSpace(cleaned) ? "document" : cleaned;
+        return string.IsNullOrWhiteSpace(cleaned) ? "image" : cleaned;
+    }
+
+    private static string GetUploadedImageUrl(UploadedDocument file) => $"/uploads/{Uri.EscapeDataString(file.StoredName)}";
+
+    private bool CanGenerateFhirDrafts() => UploadedFiles.Any(file => file.LayoutResult is not null);
+
+    private static void ResetFhirDraft(UploadedDocument file)
+    {
+        file.FhirStatus = null;
+        file.FhirOutputRelativePath = null;
+        file.FhirRawJson = null;
+        file.FhirError = null;
+        file.FhirResources.Clear();
+        file.FhirWarnings.Clear();
+        file.FhirMissingFields.Clear();
+    }
+
+    private static string BuildBoxStyle(UploadedDocument file, int left, int top, int width, int height)
+    {
+        if (file.ImageWidth <= 0 || file.ImageHeight <= 0)
+        {
+            return string.Empty;
+        }
+
+        return System.FormattableString.Invariant(
+            $"left:{left * 100d / file.ImageWidth:F3}%;top:{top * 100d / file.ImageHeight:F3}%;width:{width * 100d / file.ImageWidth:F3}%;height:{height * 100d / file.ImageHeight:F3}%;");
     }
 
     private sealed class UploadedDocument
@@ -438,7 +785,24 @@
         public long Size { get; }
         public string RelativePath { get; }
         public string Status { get; set; }
+        public string? OutputRelativePath { get; set; }
+        public string? RawJson { get; set; }
+        public string? FullText { get; set; }
+        public int ImageWidth { get; set; }
+        public int ImageHeight { get; set; }
+        public double AverageConfidence { get; set; }
+        public int LineCount { get; set; }
+        public int WordCount { get; set; }
+        public List<FHIRScanner.Services.OcrLineBox> Lines { get; } = [];
+        public List<FHIRScanner.Services.OcrWordBox> Words { get; } = [];
+        public FHIRScanner.Services.OcrLayoutResult? LayoutResult { get; set; }
+        public string? LastError { get; set; }
+        public string? FhirStatus { get; set; }
+        public string? FhirOutputRelativePath { get; set; }
+        public string? FhirRawJson { get; set; }
+        public string? FhirError { get; set; }
+        public List<FHIRScanner.Services.FhirDraftResource> FhirResources { get; } = [];
+        public List<string> FhirWarnings { get; } = [];
+        public List<string> FhirMissingFields { get; } = [];
     }
 }
-
-
