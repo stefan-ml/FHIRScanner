@@ -20,6 +20,13 @@ builder.Services.AddHttpClient<FhirDraftingService>((serviceProvider, client) =>
 });
 
 var app = builder.Build();
+var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "Storage", "Uploads");
+var ocrResultsPath = Path.Combine(app.Environment.ContentRootPath, "Storage", "OcrResults");
+var fhirDraftsPath = Path.Combine(app.Environment.ContentRootPath, "Storage", "FhirDrafts");
+
+Directory.CreateDirectory(uploadsPath);
+Directory.CreateDirectory(ocrResultsPath);
+Directory.CreateDirectory(fhirDraftsPath);
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -32,7 +39,7 @@ if (!app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(Path.Combine(app.Environment.ContentRootPath, "Storage", "Uploads")),
+    FileProvider = new PhysicalFileProvider(uploadsPath),
     RequestPath = "/uploads",
 });
 
