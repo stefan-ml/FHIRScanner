@@ -2,6 +2,10 @@
 **/bin/
 **/obj/
 **/obj_verify/
+**/bin_verify/
+**/scratch_verify/
+**/_verify_bin/
+**/_verify_obj/
 _build*/
 _buildobj*/
 _tmpbuild*/

@@ -6,91 +6,64 @@
 @inject FHIRScanner.Services.LabReportStructuringService LabReportStructuringService
 @inject FHIRScanner.Services.FhirDraftingService FhirDraftingService
 
-<PageTitle>OCR Inspector</PageTitle>
+<PageTitle>FHIRScanner</PageTitle>
 
-<section class="hero-shell">
-    <div class="hero-copy">
-        <div class="eyebrow">
-            <span class="eyebrow-dot"></span>
-            OCR tuning workspace
-        </div>
-
-        <h1>Upload images, inspect OCR, structure the lab rows, then generate draft FHIR resources.</h1>
-
-        <p class="hero-lead">
-            OCR still comes first. Once the extracted text and coordinates look solid, the app now builds a structured
-            lab-report JSON with sections and rows before anything tries to draft FHIR.
-        </p>
-
-        <div class="hero-actions">
-            <label class="primary-cta" for="document-upload">Choose images</label>
-            <a class="secondary-cta" href="#results">Jump to results</a>
-        </div>
-
-        <div class="hero-stats">
-            <div class="stat-card">
-                <span class="stat-label">Accepted</span>
-                <strong>PNG, JPG, TIFF, BMP, WEBP</strong>
-            </div>
-            <div class="stat-card">
-                <span class="stat-label">Output</span>
-                <strong>OCR layout + structured lab JSON + optional FHIR draft</strong>
-            </div>
-            <div class="stat-card">
-                <span class="stat-label">Selection</span>
-                <strong>@UploadedFiles.Count image@(UploadedFiles.Count == 1 ? string.Empty : "s")</strong>
-            </div>
-        </div>
+<section class="page-header">
+    <div>
+        <span class="section-kicker">Clinical OCR</span>
+        <h1>FHIR Scanner</h1>
     </div>
 
-    <div class="upload-panel">
-        <div class="upload-panel-header">
-            <span class="panel-kicker">Image intake</span>
-            <h2>OCR-only upload zone</h2>
-            <p>Start with images first so we can tune recognition quality and inspect layout boxes clearly.</p>
+    <div class="header-status">
+        <div>
+            <span class="guidance-label">Selected</span>
+            <strong>@UploadedFiles.Count</strong>
         </div>
-
-        <label class="upload-dropzone" for="document-upload">
-            <InputFile id="document-upload"
-                       class="upload-input"
-                       OnChange="HandleFilesSelected"
-                       multiple
-                       accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,image/png,image/jpeg,image/jpg,image/tiff,image/bmp,image/webp" />
-
-            <div class="upload-icon" aria-hidden="true">
-                <span></span>
-                <span></span>
-            </div>
-
-            <strong>Drop images here or click to browse</strong>
-            <span>Best results come from high-contrast scans or straightened phone photos with readable text.</span>
-        </label>
-
-        @if (!string.IsNullOrWhiteSpace(UploadMessage))
-        {
-            <div class="upload-feedback upload-feedback-success">@UploadMessage</div>
-        }
-
-        @if (!string.IsNullOrWhiteSpace(UploadError))
-        {
-            <div class="upload-feedback upload-feedback-error">@UploadError</div>
-        }
-
-        <div class="upload-guidance">
-            <div>
-                <span class="guidance-label">Recommended</span>
-                <strong>Sharp text and minimal blur</strong>
-            </div>
-            <div>
-                <span class="guidance-label">Run mode</span>
-                <strong>OCR first, FHIR draft second</strong>
-            </div>
-            <div>
-                <span class="guidance-label">What to inspect</span>
-                <strong>Confidence, lines, and word boxes</strong>
-            </div>
+        <div>
+            <span class="guidance-label">Status</span>
+            <strong>@GetProcessingSummary()</strong>
+        </div>
+        <div>
+            <span class="guidance-label">Storage</span>
+            <strong>@StorageFolderDisplay</strong>
         </div>
     </div>
+</section>
+
+<section class="upload-panel">
+    <div class="upload-panel-header">
+        <div>
+            <span class="panel-kicker">Document intake</span>
+            <h2>Upload lab image</h2>
+        </div>
+        <span class="format-note">PNG, JPG, TIFF, BMP, WEBP</span>
+    </div>
+
+    <label class="upload-dropzone" for="document-upload">
+        <InputFile id="document-upload"
+                   class="upload-input"
+                   OnChange="HandleFilesSelected"
+                   multiple
+                   accept=".png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp,image/png,image/jpeg,image/jpg,image/tiff,image/bmp,image/webp" />
+
+        <div class="upload-icon" aria-hidden="true">
+            <span></span>
+            <span></span>
+        </div>
+
+        <strong>Select or drop images</strong>
+        <span>Max @FormatFileSize(MaxFileSizeBytes) per file</span>
+    </label>
+
+    @if (!string.IsNullOrWhiteSpace(UploadMessage))
+    {
+        <div class="upload-feedback upload-feedback-success">@UploadMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(UploadError))
+    {
+        <div class="upload-feedback upload-feedback-error">@UploadError</div>
+    }
 </section>
 
 <section class="workspace-grid" id="results">
@@ -98,7 +71,7 @@
         <div class="section-heading">
             <div>
                 <span class="section-kicker">Current batch</span>
-                <h2>Images ready for OCR inspection</h2>
+                <h2>Case files</h2>
             </div>
             <div class="section-actions">
                 <span class="section-pill">@FormatFileCount(UploadedFiles.Count)</span>
@@ -118,8 +91,8 @@
         @if (UploadedFiles.Count == 0)
         {
             <div class="empty-state">
-                <strong>No images selected yet</strong>
-                <p>Upload one or more screenshots, scans, or phone captures to start evaluating OCR quality.</p>
+                <strong>No files loaded</strong>
+                <p>Awaiting lab image upload.</p>
             </div>
         }
         else
@@ -349,63 +322,6 @@
         }
     </div>
 
-    <div class="info-column">
-        <div class="info-card" id="pipeline">
-            <div class="section-heading">
-                <div>
-                    <span class="section-kicker">OCR path</span>
-                    <h2>What this prototype does</h2>
-                </div>
-            </div>
-
-            <div class="pipeline-list">
-                <div class="pipeline-step">
-                    <span>01</span>
-                    <div>
-                        <strong>Save the uploaded image</strong>
-                        <p>The image is stored in server-side upload storage so repeated OCR runs use the exact same source file.</p>
-                    </div>
-                </div>
-                <div class="pipeline-step">
-                    <span>02</span>
-                    <div>
-                        <strong>Preprocess for OCR</strong>
-                        <p>The Python script rotates by EXIF, converts to grayscale, boosts contrast, sharpens, and upscales smaller images before OCR.</p>
-                    </div>
-                </div>
-                <div class="pipeline-step">
-                    <span>03</span>
-                    <div>
-                        <strong>Inspect text with coordinates</strong>
-                        <p>The result includes recognized lines and words with bounding boxes, so we can debug layout and recognition quality visually.</p>
-                    </div>
-                </div>
-                <div class="pipeline-step">
-                    <span>04</span>
-                    <div>
-                        <strong>Generate draft FHIR from structured rows</strong>
-                        <p>The app first converts OCR into sectioned lab rows, then sends that structured report to the model for draft FHIR generation.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="info-card compact-card">
-            <div class="section-heading">
-                <div>
-                    <span class="section-kicker">Important note</span>
-                    <h2>Coordinates help analysis</h2>
-                </div>
-            </div>
-
-            <ul class="check-list">
-                <li>Coordinates do not inherently make OCR more accurate</li>
-                <li>They do make it much easier to see which regions Tesseract is missing or splitting badly</li>
-                <li>This gives us a better base for tuning preprocessing, segmentation mode, and later model choices</li>
-                <li>Once the text quality is solid, a second step can draft FHIR resources from the structured lab JSON</li>
-            </ul>
-        </div>
-    </div>
 </section>
 
 @code {

@@ -3,48 +3,45 @@
     grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 1rem;
-    width: min(1280px, 100%);
+    width: min(1360px, 100%);
+    min-height: 4.15rem;
     margin: 0 auto;
-    padding: 0.95rem 1.1rem;
-    border-radius: 24px;
-    background: rgba(10, 16, 30, 0.72);
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    backdrop-filter: blur(22px);
-    box-shadow: 0 16px 60px rgba(2, 6, 23, 0.18);
+    padding: 0 1.25rem;
+    background: #ffffff;
 }
 
 .brand-mark {
     display: inline-flex;
     align-items: center;
-    gap: 0.9rem;
+    gap: 0.75rem;
+    color: #15263b;
     text-decoration: none;
 }
 
 .brand-icon {
     display: grid;
     place-items: center;
-    width: 2.85rem;
-    height: 2.85rem;
-    border-radius: 18px;
-    font-weight: 800;
-    color: #082f49;
-    background: linear-gradient(135deg, #a7f3d0, #67e8f9);
+    width: 2.45rem;
+    height: 2.45rem;
+    border-radius: 7px;
+    background: #1f6fa8;
+    color: #ffffff;
+    font-weight: 900;
 }
 
 .brand-copy {
     display: grid;
-    gap: 0.15rem;
+    gap: 0.05rem;
 }
 
-.brand-copy strong,
-.nav-link-pill,
-.nav-status {
-    color: #f8fafc;
+.brand-copy strong {
+    color: #15263b;
+    font-size: 1.02rem;
 }
 
 .brand-copy span {
-    color: #b9cadf;
-    font-size: 0.88rem;
+    color: #65758a;
+    font-size: 0.82rem;
 }
 
 .nav-links {
@@ -55,33 +52,40 @@
 .nav-link-pill {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-height: 2.8rem;
-    padding: 0 1rem;
-    border-radius: 999px;
-    text-decoration: none;
-    background: rgba(148, 163, 184, 0.08);
+    min-height: 2.35rem;
+    padding: 0 0.8rem;
     border: 1px solid transparent;
-    transition: background 0.2s ease, border-color 0.2s ease;
+    border-radius: 6px;
+    color: #334d68;
+    font-weight: 800;
+    text-decoration: none;
 }
 
 .nav-link-pill.active {
-    background: rgba(45, 212, 191, 0.12);
-    border-color: rgba(45, 212, 191, 0.2);
+    border-color: #c8d6e4;
+    background: #f4f8fb;
+    color: #1f5f91;
 }
 
 .nav-status {
-    padding: 0.5rem 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    min-height: 2rem;
+    padding: 0 0.65rem;
+    border: 1px solid #c8d6e4;
     border-radius: 999px;
-    background: rgba(125, 211, 252, 0.12);
-    border: 1px solid rgba(125, 211, 252, 0.14);
-    font-size: 0.92rem;
+    background: #f8fbfd;
+    color: #51677f;
+    font-size: 0.84rem;
+    font-weight: 800;
 }
 
 @media (max-width: 720px) {
     .top-nav {
         grid-template-columns: 1fr;
+        gap: 0.65rem;
         justify-items: start;
+        padding: 0.75rem 0.8rem;
     }
 
     .nav-links {
