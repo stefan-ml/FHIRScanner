@@ -63,9 +63,8 @@ public sealed class OcrProcessingService
                 $"Only image OCR is enabled right now. '{extension}' is not supported in this OCR-only mode.");
         }
 
-        var workspaceRoot = ResolveWorkspaceRoot();
-        var scriptPath = Path.Combine(workspaceRoot, _options.ScriptRelativePath);
-        if (!File.Exists(scriptPath))
+        var script = ResolveScript();
+        if (script is null)
         {
             return new OcrProcessingResult(
                 false,
@@ -73,7 +72,7 @@ public sealed class OcrProcessingService
                 null,
                 null,
                 null,
-                $"OCR script not found at '{scriptPath}'.");
+                $"OCR script '{_options.ScriptRelativePath}' was not found under the app folder or its parent folders.");
         }
 
         var outputDirectory = Path.Combine(_environment.ContentRootPath, _options.OutputRelativePath);
@@ -85,14 +84,14 @@ public sealed class OcrProcessingService
         var startInfo = new ProcessStartInfo
         {
             FileName = _options.PythonExecutable,
-            WorkingDirectory = workspaceRoot,
+            WorkingDirectory = script.WorkingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
 
-        startInfo.ArgumentList.Add(scriptPath);
+        startInfo.ArgumentList.Add(script.Path);
         startInfo.ArgumentList.Add(uploadPath);
         startInfo.ArgumentList.Add("--output");
         startInfo.ArgumentList.Add(outputPath);
@@ -167,7 +166,22 @@ public sealed class OcrProcessingService
         }
     }
 
-    private string ResolveWorkspaceRoot() => Path.GetFullPath(Path.Combine(_environment.ContentRootPath, "..", ".."));
+    private ResolvedScript? ResolveScript()
+    {
+        var current = new DirectoryInfo(_environment.ContentRootPath);
+        while (current is not null)
+        {
+            var scriptPath = Path.GetFullPath(Path.Combine(current.FullName, _options.ScriptRelativePath));
+            if (File.Exists(scriptPath))
+            {
+                return new ResolvedScript(scriptPath, current.FullName);
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
+    }
 
     private static string BuildErrorMessage(string stderr, string stdout)
     {
@@ -179,4 +193,6 @@ public sealed class OcrProcessingService
 
         return details.Trim();
     }
+
+    private sealed record ResolvedScript(string Path, string WorkingDirectory);
 }
