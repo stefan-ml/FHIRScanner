@@ -16,44 +16,6 @@ winget install Python.Python.3.12
 winget install UB-Mannheim.TesseractOCR
 winget install Ollama.Ollama
 ```
-
-Close and reopen PowerShell after installing so `PATH` updates are loaded.
-
-Verify the tools:
-
-```powershell
-dotnet --version
-python --version
-python -m pip --version
-& "C:\Program Files\Tesseract-OCR\tesseract.exe" --version
-ollama --version
-```
-
-If `python --version` prints this error:
-
-```text
-Python was not found; run without arguments to install from the Microsoft Store...
-```
-
-install Python from `winget` or from `https://www.python.org/downloads/windows/`, enable `Add python.exe to PATH`, then reopen PowerShell. If Windows still opens the Microsoft Store alias, disable these aliases:
-
-```text
-Settings -> Apps -> Advanced app settings -> App execution aliases
-```
-
-Turn off:
-
-```text
-python.exe
-python3.exe
-```
-
-Then verify again:
-
-```powershell
-python --version
-```
-
 ## 2. Install Python Packages
 
 From the repository root:
@@ -78,18 +40,6 @@ Pull the local model used by development config:
 ```powershell
 ollama pull qwen2.5vl:7b
 ollama list
-```
-
-Make sure the Ollama server is running. In one PowerShell window:
-
-```powershell
-ollama serve
-```
-
-In another PowerShell window, verify the API:
-
-```powershell
-Invoke-RestMethod http://localhost:11434/api/tags
 ```
 
 Development config is in:
