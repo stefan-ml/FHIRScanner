@@ -275,8 +275,10 @@ public sealed class FhirDraftingService
             Use only facts present in the structured report.
             Do not invent missing values.
             Use real FHIR resource types only.
-            Return one DiagnosticReport plus Observation resources only.
+            Return a Patient resource when patient identifying fields are present.
+            Return one DiagnosticReport plus Observation resources.
             Do not nest Observation objects inside DiagnosticReport.
+            DiagnosticReport.subject should reference the Patient when available.
             DiagnosticReport.result should contain references only.
             Keep each resource compact.
             No markdown fences.
@@ -523,6 +525,12 @@ public sealed class FhirDraftingService
 
     private static object BuildLocalPayloadObject(StructuredLabReport report, string? modelError)
     {
+        var patientName = GetHeaderValue(report, "Patient Name") ?? report.PatientDisplayName;
+        var cleanedPatientName = string.IsNullOrWhiteSpace(patientName) ? null : CleanDisplayName(patientName);
+        var patientId = GetHeaderValue(report, "Patient ID");
+        var patientGender = NormalizeGender(GetHeaderValue(report, "Gender"));
+        var patientBirthDate = NormalizeDate(GetHeaderValue(report, "Date of Birth"));
+
         var rows = report.Sections
             .SelectMany(section => section.Rows.Select(row => new { Section = section.Name, Row = row }))
             .Where(item => !string.Equals(item.Row.ParsingStatus, "missing-result", StringComparison.OrdinalIgnoreCase))
@@ -534,26 +542,48 @@ public sealed class FhirDraftingService
 
         var resources = new List<object>();
 
-        if (!string.IsNullOrWhiteSpace(report.PatientDisplayName))
+        if (!string.IsNullOrWhiteSpace(cleanedPatientName) || !string.IsNullOrWhiteSpace(patientId))
         {
+            var patientResourceId = Slug(cleanedPatientName ?? patientId ?? "patient");
             resources.Add(new
             {
                 resourceType = "Patient",
-                rationale = "Patient name was extracted from the structured report header.",
+                rationale = "Patient demographics were extracted from the structured report header.",
                 resource = new
                 {
                     resourceType = "Patient",
-                    id = Slug(report.PatientDisplayName),
-                    name = new[]
-                    {
-                        new
+                    id = patientResourceId,
+                    identifier = string.IsNullOrWhiteSpace(patientId)
+                        ? Array.Empty<object>()
+                        : new object[]
                         {
-                            text = CleanDisplayName(report.PatientDisplayName),
+                            new
+                            {
+                                value = patientId,
+                            },
                         },
-                    },
+                    name = string.IsNullOrWhiteSpace(cleanedPatientName)
+                        ? Array.Empty<object>()
+                        : new object[]
+                        {
+                            new
+                            {
+                                text = cleanedPatientName,
+                            },
+                        },
+                    gender = patientGender,
+                    birthDate = patientBirthDate,
                 },
             });
         }
+
+        var patientReference = !string.IsNullOrWhiteSpace(cleanedPatientName) || !string.IsNullOrWhiteSpace(patientId)
+            ? new
+            {
+                reference = $"Patient/{Slug(cleanedPatientName ?? patientId ?? "patient")}",
+                display = cleanedPatientName,
+            }
+            : null;
 
         resources.Add(new
         {
@@ -568,13 +598,7 @@ public sealed class FhirDraftingService
                     text = report.ReportTitle ?? "Lab report",
                 },
                 identifier = BuildIdentifier(report),
-                subject = string.IsNullOrWhiteSpace(report.PatientDisplayName)
-                    ? null
-                    : new
-                    {
-                        reference = $"Patient/{Slug(report.PatientDisplayName)}",
-                        display = CleanDisplayName(report.PatientDisplayName),
-                    },
+                subject = patientReference,
                 result = observationResources
                     .Select(resource => new
                     {
@@ -582,7 +606,7 @@ public sealed class FhirDraftingService
                         display = resource.Display,
                     })
                     .ToArray(),
-            },
+                },
         });
 
         resources.AddRange(observationResources.Select(resource => resource.Resource));
@@ -687,6 +711,57 @@ public sealed class FhirDraftingService
             })
             .Cast<object>()
             .ToArray();
+    }
+
+    private static string? GetHeaderValue(StructuredLabReport report, string label)
+    {
+        return report.HeaderFields
+            .FirstOrDefault(field => string.Equals(field.Label, label, StringComparison.OrdinalIgnoreCase))
+            ?.Value;
+    }
+
+    private static string? NormalizeGender(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "male" => "male",
+            "female" => "female",
+            "other" => "other",
+            "unknown" => "unknown",
+            _ => null,
+        };
+    }
+
+    private static string? NormalizeDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var formats = new[]
+        {
+            "dd-MMM-yyyy",
+            "d-MMM-yyyy",
+            "dd/MM/yyyy",
+            "d/M/yyyy",
+            "dd-MM-yyyy",
+            "d-M-yyyy",
+        };
+
+        return DateTime.TryParseExact(
+            value.Trim(),
+            formats,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.None,
+            out var parsed)
+            ? parsed.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture)
+            : value.Trim();
     }
 
     private static decimal? ParseDecimal(string? value)

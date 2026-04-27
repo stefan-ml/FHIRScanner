@@ -13,7 +13,16 @@ public sealed class LabReportStructuringService
 
     private static readonly Regex NumericValueRegex = new(@"[-+]?\d+(?:[.,]\d+)?", RegexOptions.Compiled);
     private static readonly Regex FlagRegex = new(@"\[(?<flag>[A-Z]+)\]", RegexOptions.Compiled);
+    private static readonly Regex PatientIdRegex = new(@"Patient\s*ID\s*:?\s*(?<value>[A-Za-z0-9\-\/]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex PatientNameRegex = new(@"Patient\s*Name\s*:?\s*(?<value>.*?)(?=\s+(?:Sample\s*ID|Age\s*/\s*DOB|Gender|Report\s*Print\s*Time|Report\s*Status|Sample\s*Type|Client)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex GenderRegex = new(@"Gender\s*:?\s*(?<value>Male|Female|Other|Unknown)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex DateOfBirthRegex = new(@"Age\s*/\s*DOB\s*:?\s*(?:\d+\s*Years?\s*/\s*)?(?<value>\d{1,2}[-\/][A-Za-z]{3}[-\/]\d{4}|\d{1,2}[-\/]\d{1,2}[-\/]\d{4})", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex SampleIdRegex = new(@"Sample\s*Id\s*:?\s*(?<value>[A-Za-z0-9\-\/]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SampleTypeRegex = new(@"Sample\s*Type\s*:?\s*(?<value>.*?)(?=\s+(?:Report\s*Print\s*Time|Report\s*Status|Patient\s*ID|Patient\s*Name|Gender|Client)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ReportPrintTimeRegex = new(@"Report\s*Print\s*Time\s*:?\s*(?<value>\d{1,2}[-\/][A-Za-z]{3}[-\/]\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM)?)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ReportStatusRegex = new(@"Report\s*Status\s*:?\s*(?<value>[A-Za-z ]+?)(?=\s+(?:Patient\s*ID|Patient\s*Name|Sample\s*ID|Sample\s*Type|Client)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ReferredByRegex = new(@"Referred\s*By\s*:?\s*(?<value>.*?)(?=\s+Report\s*Status\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex ClientRegex = new(@"Client\s*:?\s*(?<value>.*?)(?=\s+(?:Patient\s*ID|Patient\s*Name|Sample\s*ID|Sample\s*Type|Report\s*Status)\b|$)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
     private static readonly Regex TimeRegex = new(@"(?<value>\d{1,2}:\d{2}:\d{2})", RegexOptions.Compiled);
 
     public LabReportStructuringResult Parse(OcrLayoutResult layout)
@@ -249,15 +258,22 @@ public sealed class LabReportStructuringService
         foreach (var line in lines.Where(line => line.Top < cutoff))
         {
             var text = CleanText(line.Text);
+            var patientNameMatch = PatientNameRegex.Match(text);
+            if (patientNameMatch.Success)
+            {
+                return CleanCell(patientNameMatch.Groups["value"].Value);
+            }
+
             if (string.IsNullOrWhiteSpace(text)
                 || ContainsAny(text, "Diagnostic", "Laboratory", "Sample Id", "Report Release Time", "Dr.", "Time :"))
             {
                 continue;
             }
 
-            if (Regex.IsMatch(text, @"\b[A-Z][a-z]+\s+[A-Z]\.\s+[A-Z][a-z]+", RegexOptions.CultureInvariant))
+            var nameMatch = Regex.Match(text, @"\b[A-Z][a-z]+(?:\s+[A-Z]\.)?\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?\b", RegexOptions.CultureInvariant);
+            if (nameMatch.Success)
             {
-                return text;
+                return CleanCell(nameMatch.Value);
             }
         }
 
@@ -280,28 +296,16 @@ public sealed class LabReportStructuringService
                 continue;
             }
 
-            var sampleIdMatch = SampleIdRegex.Match(text);
-            if (sampleIdMatch.Success)
-            {
-                fields.Add(new LabReportField
-                {
-                    Label = "Sample Id",
-                    Value = sampleIdMatch.Groups["value"].Value,
-                    SourceLineIndex = ResolveLineOrdinal(line, lineOrdinals),
-                    Confidence = line.Confidence,
-                });
-            }
-
-            if (ContainsIgnoreCase(text, "Dr."))
-            {
-                fields.Add(new LabReportField
-                {
-                    Label = "Ordering Provider",
-                    Value = CleanCell(text.Replace(":", string.Empty)),
-                    SourceLineIndex = ResolveLineOrdinal(line, lineOrdinals),
-                    Confidence = line.Confidence,
-                });
-            }
+            AddRegexField(fields, "Patient ID", PatientIdRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Patient Name", PatientNameRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Date of Birth", DateOfBirthRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Gender", GenderRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Sample Id", SampleIdRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Sample Type", SampleTypeRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Report Print Time", ReportPrintTimeRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Report Status", ReportStatusRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Ordering Provider", ReferredByRegex, text, line, lineOrdinals);
+            AddRegexField(fields, "Client", ClientRegex, text, line, lineOrdinals);
 
             if (ContainsIgnoreCase(text, "Hospital"))
             {
@@ -331,6 +335,35 @@ public sealed class LabReportStructuringService
             .GroupBy(field => (field.Label, field.Value))
             .Select(group => group.First())
             .ToList();
+    }
+
+    private static void AddRegexField(
+        List<LabReportField> fields,
+        string label,
+        Regex regex,
+        string text,
+        OcrLineBox line,
+        IReadOnlyDictionary<OcrLineBox, int> lineOrdinals)
+    {
+        var match = regex.Match(text);
+        if (!match.Success)
+        {
+            return;
+        }
+
+        var value = CleanCell(match.Groups["value"].Value);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        fields.Add(new LabReportField
+        {
+            Label = label,
+            Value = value,
+            SourceLineIndex = ResolveLineOrdinal(line, lineOrdinals),
+            Confidence = line.Confidence,
+        });
     }
 
     private static bool IsSectionHeading(string text)
