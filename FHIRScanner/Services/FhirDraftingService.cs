@@ -52,6 +52,11 @@ public sealed class FhirDraftingService
                 "Run OCR first so the model has structured text and coordinates to work from.");
         }
 
+        if (!_fhirDraftOptions.UseModel)
+        {
+            return await BuildLocalDraftAsync(storedFileName, report, null, cancellationToken);
+        }
+
         var apiKey = ResolveApiKey();
         var canSkipApiKey = CanSkipApiKey();
         if (string.IsNullOrWhiteSpace(apiKey) && !canSkipApiKey)
@@ -281,6 +286,8 @@ public sealed class FhirDraftingService
             DiagnosticReport.subject should reference the Patient when available.
             DiagnosticReport.result should contain references only.
             Keep each resource compact.
+            Keep rationale values short.
+            Do not include long notes unless they are needed to preserve source confidence.
             No markdown fences.
             Return valid JSON:
             {
@@ -516,7 +523,7 @@ public sealed class FhirDraftingService
 
         return new FhirDraftResult(
             true,
-            "FHIR draft ready (local fallback)",
+            string.IsNullOrWhiteSpace(modelError) ? "FHIR draft ready" : "FHIR draft ready (local fallback)",
             Path.Combine(_fhirDraftOptions.OutputRelativePath, outputFileName),
             outputJson,
             payload,
@@ -612,9 +619,9 @@ public sealed class FhirDraftingService
         resources.AddRange(observationResources.Select(resource => resource.Resource));
 
         var warnings = report.Warnings.ToList();
-        warnings.Add("FHIR draft was generated locally because the model returned malformed or truncated JSON.");
         if (!string.IsNullOrWhiteSpace(modelError))
         {
+            warnings.Add("FHIR draft was generated locally because the model returned malformed or truncated JSON.");
             warnings.Add(Truncate(modelError, 220));
         }
 
@@ -814,8 +821,8 @@ internal sealed record PromptBudget(int MaxLinesToSend, int MaxLineTextLength, i
 {
     public int MaxOutputTokens => Label switch
     {
-        "primary" => 1000,
-        "retry" => 850,
-        _ => 650,
+        "primary" => 3000,
+        "retry" => 2200,
+        _ => 1400,
     };
 }

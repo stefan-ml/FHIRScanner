@@ -4,6 +4,8 @@ public sealed class FhirDraftOptions
 {
     public string OutputRelativePath { get; set; } = Path.Combine("Storage", "FhirDrafts");
 
+    public bool UseModel { get; set; }
+
     public int MaxLinesToSend { get; set; } = 40;
 
     public int MaxLineTextLength { get; set; } = 140;

@@ -368,14 +368,17 @@ public sealed class LabReportStructuringService
 
     private static bool IsSectionHeading(string text)
     {
-        var trimmed = text.Trim().Trim(':');
-        return trimmed switch
+        var trimmed = CleanText(text).Trim().Trim(':');
+        var normalized = Regex.Replace(trimmed, @"\s+", " ").ToUpperInvariant();
+
+        if (normalized is "DIFFERENTIAL COUNT" or "PLATELETS" or "ABSOLUTE COUNTS")
         {
-            "DIFFERENTIAL COUNT" => true,
-            "PLATELETS" => true,
-            "ABSOLUTE COUNTS" => true,
-            _ => false,
-        };
+            return true;
+        }
+
+        return normalized.Contains("BLOOD COUNT", StringComparison.Ordinal)
+            || normalized.Contains("DIFFERENTIAL", StringComparison.Ordinal)
+            || normalized.Contains("ABSOLUTE", StringComparison.Ordinal);
     }
 
     private static string NormalizeHeading(string text) => CleanText(text).Trim().Trim(':');
@@ -403,6 +406,8 @@ public sealed class LabReportStructuringService
 
     private static RowColumns SplitIntoColumns(OcrLineBox line, List<OcrWordBox> words, ColumnAnchors anchors)
     {
+        const int BoundaryTolerancePixels = 12;
+
         if (words.Count == 0)
         {
             return new RowColumns(CleanText(line.Text), string.Empty, string.Empty, string.Empty);
@@ -415,11 +420,11 @@ public sealed class LabReportStructuringService
 
         foreach (var word in words)
         {
-            if (word.Left >= anchors.ReferenceStart)
+            if (word.Left >= anchors.ReferenceStart - BoundaryTolerancePixels)
             {
                 referenceWords.Add(word.Text);
             }
-            else if (word.Left >= anchors.UnitStart)
+            else if (word.Left >= anchors.UnitStart - BoundaryTolerancePixels)
             {
                 unitWords.Add(word.Text);
             }
